@@ -1,13 +1,16 @@
--- THAIHUD V3.2
+-- THAIHUD V3.2 - Optimized Version
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
 local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 
--- ========= GUI =========
+-- Kiểm tra LocalPlayer đã sẵn sàng chưa (Best Practice)
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then return end
+
+-- ========= Cấu hình GUI & Thông báo (Thêm) =========
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "THAIHUD_V3"
+ScreenGui.Name = "THAIHUD_V3_Optimized"
 ScreenGui.Parent = CoreGui
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
@@ -15,21 +18,44 @@ ScreenGui.Enabled = true
 local Window = Instance.new("Frame")
 Window.Name = "MainWindow"
 Window.Size = UDim2.new(0, 450, 0, 600)
-Window.Position = UDim2.new(0.3,0,0.1,0)
-Window.BackgroundColor3 = Color3.fromRGB(60,0,80) -- màu tím vũ trụ
+Window.Position = UDim2.new(0.3, 0, 0.1, 0)
+Window.BackgroundColor3 = Color3.fromRGB(60, 0, 80) -- Màu tím vũ trụ
 Window.BorderSizePixel = 0
 Window.Active = true
 Window.Draggable = true
 Window.Parent = ScreenGui
 
+-- Corner & Stroke (Thêm)
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = Window
+
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1,0,0,40)
+Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundTransparency = 1
-Title.Text = "✨ THAIHUD V3 ✨"
-Title.TextColor3 = Color3.fromRGB(255,255,255)
+Title.Text = "✨ THAIHUD V3.2 | Optimized Loader ✨"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 20
 Title.Parent = Window
+
+-- Log/Status Message (Thêm)
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Name = "StatusLabel"
+StatusLabel.Size = UDim2.new(1, -20, 0, 20)
+StatusLabel.Position = UDim2.new(0, 10, 1, -25) -- Đặt ở phía dưới
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+StatusLabel.Text = "Status: Ready."
+StatusLabel.Font = Enum.Font.SourceSans
+StatusLabel.TextSize = 14
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = Window
+
+local function updateStatus(message, color)
+    StatusLabel.Text = "Status: " .. message
+    StatusLabel.TextColor3 = color or Color3.fromRGB(255, 255, 0) -- Mặc định vàng
+end
 
 -- Toggle HUD bằng phím K
 UserInputService.InputBegan:Connect(function(input, gpe)
@@ -39,12 +65,13 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
--- ========= Script Store =========
+-- ========= Script Store (Dữ liệu của bạn) =========
 local ScriptStore = {
     -- Blox Fruits cũ & mới
     {name="Gravity Hub", link="https://raw.githubusercontent.com/Dev-GravityHub/BloxFruit/refs/heads/main/Main.lua"},
     {name="W-Azure", link="https://api.luarmor.net/files/v3/loaders/85e904ae1ff30824c1aa007fc7324f8f.lua"},
     {name="BlueX Hub", link="https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua"},
+    -- ... (Giữ nguyên danh sách còn lại)
     {name="Master Hub", link="https://raw.githubusercontent.com/KiddoHiru/BloxFruits/main/MasterHub.lua"},
     {name="Astral Hub", link="https://raw.githubusercontent.com/Overgustx2/Main/refs/heads/main/BloxFruits_25.html"},
     {name="Teddy Hub", link="https://raw.githubusercontent.com/Teddyseetink/Haidepzai/refs/heads/main/TeddyHub.lua"},
@@ -81,43 +108,69 @@ local ScriptStore = {
     {name="Vietnam Hub", link="https://raw.githubusercontent.com/replit8173/VietnamHub/refs/heads/main/VietnamseHub.lua"}
 }
 
--- ========= Script List UI =========
+-- ========= Script List UI (Đã Tối ưu) =========
 local ScrollFrame = Instance.new("ScrollingFrame")
-ScrollFrame.Size = UDim2.new(1,-20,1,-60)
-ScrollFrame.Position = UDim2.new(0,10,0,50)
-ScrollFrame.CanvasSize = UDim2.new(0,0,0,#ScriptStore*40)
+ScrollFrame.Size = UDim2.new(1, -20, 1, -80) -- Giảm kích thước để chừa chỗ cho StatusLabel
+ScrollFrame.Position = UDim2.new(0, 10, 0, 50)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, #ScriptStore * 40)
 ScrollFrame.ScrollBarThickness = 6
 ScrollFrame.BackgroundTransparency = 1
 ScrollFrame.Parent = Window
 
+local UIGridLayout = Instance.new("UIGridLayout") -- Sử dụng UIGridLayout để quản lý vị trí tốt hơn
+UIGridLayout.CellSize = UDim2.new(1, -10, 0, 36)
+UIGridLayout.CellPadding = UDim2.new(0, 0, 0, 4)
+UIGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIGridLayout.Parent = ScrollFrame
+
 for i, s in ipairs(ScriptStore) do
     local Btn = Instance.new("TextButton")
-    Btn.Size = UDim2.new(1,-10,0,36)
-    Btn.Position = UDim2.new(0,5,0,(i-1)*40)
-    Btn.BackgroundColor3 = Color3.fromRGB(120,0,150)
-    Btn.TextColor3 = Color3.fromRGB(255,255,255)
+    Btn.Name = "Btn_" .. s.name:gsub(" ", "_") -- Đặt tên nút rõ ràng
+    Btn.Size = UDim2.new(1, 0, 0, 36) -- Đặt kích thước theo CellSize của Layout
+    Btn.BackgroundColor3 = Color3.fromRGB(120, 0, 150)
+    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     Btn.Font = Enum.Font.GothamBold
     Btn.TextSize = 16
     Btn.Text = s.name
     Btn.Parent = ScrollFrame
 
+    -- Hover Effect (Thêm)
+    Btn.MouseEnter:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(150, 0, 180) end)
+    Btn.MouseLeave:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(120, 0, 150) end)
+    
     Btn.MouseButton1Click:Connect(function()
-        -- Xác nhận trước khi chạy
-        local confirmed = true
-        if confirmed then
-            local ok, code = pcall(function()
-                return game:HttpGet(s.link)
-            end)
-            if ok and code and code ~= "" then
-                local fn, err = loadstring(code)
-                if fn then
-                    pcall(fn)
+        updateStatus("Loading " .. s.name .. "...", Color3.fromRGB(255, 255, 0))
+        
+        -- Thêm độ trễ nhỏ để tránh spam
+        Btn.Active = false
+        delay(0.1, function() Btn.Active = true end)
+
+        local ok, code = pcall(function()
+            return game:HttpGet(s.link)
+        end)
+        
+        if ok and code and type(code) == "string" and code ~= "" then
+            
+            local fn, err = loadstring(code)
+            
+            if fn then
+                local success, run_err = pcall(fn)
+                if success then
+                    updateStatus("✅ Successfully loaded and ran: " .. s.name, Color3.fromRGB(0, 255, 0))
                 else
-                    warn("Loadstring error: "..tostring(err))
+                    -- Lỗi khi script đang chạy
+                    updateStatus("❌ RUNTIME ERROR: " .. s.name .. " (" .. tostring(run_err) .. ")", Color3.fromRGB(255, 0, 0))
+                    warn("❌ RUNTIME ERROR: " .. s.name .. " - " .. tostring(run_err)) 
                 end
             else
-                warn("Failed to fetch: "..s.name)
+                -- Lỗi khi loadstring (Script không phải Luau hợp lệ)
+                updateStatus("⚠️ LOADSTRING ERROR: " .. s.name .. " (Not valid Luau code)", Color3.fromRGB(255, 128, 0))
+                warn("⚠️ Loadstring error for " .. s.name .. ": " .. tostring(err)) 
             end
+        else
+            -- Lỗi khi tải script (URL hỏng/Server down)
+            updateStatus("🔴 FETCH FAILED: " .. s.name .. " (URL Down/Empty response)", Color3.fromRGB(255, 0, 0))
+            warn("🔴 Failed to fetch or empty content for: "..s.name..". Status OK: "..tostring(ok))
         end
     end)
 end
