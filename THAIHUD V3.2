@@ -1,296 +1,290 @@
-local name = "thái"
--- friendly, corrected greeting label
-print("THAIDUI: " .. name .. " (Version 2.0)")
+l-- THAIHUD V3.3 - Upgraded Version
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris") -- Dùng để xóa GUI an toàn
 
-local HeartIcon = "rbxassetid://3926305904"
+-- Kiểm tra LocalPlayer đã sẵn sàng chưa (Best Practice)
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then return end
 
--- =======================================
--- Small Helpers for Remote Code Handling
--- =======================================
+-- Lưu trữ tất cả các đối tượng được tạo bởi script bên ngoài
+local CreatedInstances = {}
 
-local function fetchRemoteCode(url)
-    local ok, res = pcall(function() return game:HttpGet(url) end)
-    if not ok or not res or res == "" then
-        warn("[THAIDUI] 🔴 Failed to download: " .. tostring(url))
-        return nil, res
-    end
-    return res
-end
-
-local function compileCode(code)
-    local fn, err = loadstring(code)
-    if not fn then
-        warn("[THAIDUI] ⚠️ loadstring failed (Invalid Luau): " .. tostring(err))
-        return nil, err
-    end
-    return fn
-end
-
-local function safeExecuteUrl(url)
-    local code = fetchRemoteCode(url)
-    if not code then 
-        warn("[THAIDUI] execution stopped: Failed to fetch code.")
-        return false 
-    end
-    local fn = compileCode(code)
-    if not fn then 
-        warn("[THAIDUI] execution stopped: Failed to compile code.")
-        return false 
-    end
-    local ok, res = pcall(fn)
-    if not ok then
-        -- Đây là lỗi runtime (attempt to call a nil value) bạn thấy trên console
-        warn("[THAIDUI] ❌ RUNTIME ERROR: " .. tostring(res))
-        return false
-    end
-    return true
-end
-
--- =======================================
--- Confirmation modal helper
--- (Removed the redundant overlay and centralized box creation)
--- =======================================
-local function askConfirmation(title, message, onConfirm)
-    local existing = game.CoreGui:FindFirstChild("THAIDUI_Confirm")
-    if existing then existing:Destroy() end
-
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "THAIDUI_Confirm"
-    gui.ResetOnSpawn = false
-    gui.Parent = game.CoreGui
-
-    local box = Instance.new("Frame")
-    box.Name = "ConfirmBox"
-    box.Size = UDim2.new(0, 360, 0, 160)
-    box.Position = UDim2.new(0.5, -180, 0.5, -80)
-    box.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    box.BorderSizePixel = 1
-    box.BorderColor3 = Color3.fromRGB(80, 80, 85)
-    box.Parent = gui -- Đã sửa: box là con trực tiếp của gui, loại bỏ overlay
-
-    local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -20, 0, 28)
-    titleLbl.Position = UDim2.new(0, 10, 0, 6)
-    titleLbl.Text = title or "Confirm"
-    titleLbl.TextColor3 = Color3.new(1,1,1)
-    titleLbl.BackgroundTransparency = 1
-    titleLbl.Font = Enum.Font.GothamBold
-    titleLbl.TextSize = 18
-    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.Parent = box
-
-    local messageLbl = Instance.new("TextLabel")
-    messageLbl.Size = UDim2.new(1, -20, 0, 70)
-    messageLbl.Position = UDim2.new(0, 10, 0, 36)
-    messageLbl.Text = message or "Are you sure?"
-    messageLbl.TextColor3 = Color3.new(0.8,0.8,0.8)
-    messageLbl.BackgroundTransparency = 1
-    messageLbl.Font = Enum.Font.Code
-    messageLbl.TextSize = 14
-    messageLbl.TextWrapped = true
-    messageLbl.TextXAlignment = Enum.TextXAlignment.Left
-    messageLbl.Parent = box
-
-    local yesBtn = Instance.new("TextButton")
-    yesBtn.Size = UDim2.new(0.44, 0, 0, 34)
-    yesBtn.Position = UDim2.new(0.06, 0, 1, -46)
-    yesBtn.Text = "Run"
-    yesBtn.BackgroundColor3 = Color3.fromRGB(80, 160, 80)
-    yesBtn.TextColor3 = Color3.new(1,1,1)
-    yesBtn.Parent = box
-
-    local noBtn = Instance.new("TextButton")
-    noBtn.Size = UDim2.new(0.44, 0, 0, 34)
-    noBtn.Position = UDim2.new(0.5, 0, 1, -46)
-    noBtn.Text = "Cancel"
-    noBtn.BackgroundColor3 = Color3.fromRGB(160, 80, 80)
-    noBtn.TextColor3 = Color3.new(1,1,1)
-    noBtn.Parent = box
-
-    local cleanup = function()
-        if gui and gui.Parent then gui:Destroy() end
-    end
-
-    yesBtn.MouseButton1Click:Connect(function()
-        pcall(function() if onConfirm then onConfirm() end end)
-        cleanup()
-    end)
-
-    noBtn.MouseButton1Click:Connect(function()
-        cleanup()
-    end)
-
-    return gui
-end
-
--- =======================================
--- KAVO UI Library Loader (Critical Part)
--- =======================================
-
-local _lib_url = "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"
-local Library = nil
-do
-    local code = fetchRemoteCode(_lib_url)
-    if code then
-        local fn = compileCode(code)
-        if fn then
-            local ok, res = pcall(fn)
-            if ok then
-                Library = res
-            else
-                warn("[THAIDUI] ❌ UI library runtime error: " .. tostring(res))
-            end
+-- Chức năng Kill/Clear Script
+local function clearAllScripts()
+    -- Xóa các GUI/Objects đã được script bên ngoài tạo
+    for _, instance in ipairs(CreatedInstances) do
+        if instance and instance.Parent then
+            Debris:AddItem(instance, 0) -- Xóa instance an toàn
         end
     end
+    CreatedInstances = {}
+    
+    -- Xóa các ScreenGui phổ biến (phòng trường hợp script tự tạo ScreenGui)
+    for _, gui in ipairs(CoreGui:GetChildren()) do
+        if gui.Name ~= ScreenGui.Name and (string.find(gui.Name:lower(), "hub") or string.find(gui.Name:lower(), "gui")) then
+             Debris:AddItem(gui, 0)
+        end
+    end
+    
+    updateStatus("Scripts cleared (Note: may not remove all external GUIs).", Color3.fromRGB(255, 100, 0))
+    warn("[THAIDUI] Cleared script instances.")
 end
 
-if not Library then
-    -- Đã sửa: Cảnh báo rõ ràng và dừng lại.
-    warn("THAIDUI: 🔴 FAILED TO LOAD UI LIBRARY. Please check the URL: " .. _lib_url)
-    return -- Dùng return thay vì error() để script dừng nhẹ nhàng hơn
+-- ========= Cấu hình GUI & Thông báo =========
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "THAIHUD_V3_Optimized"
+ScreenGui.Parent = CoreGui
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Enabled = true
+
+local Window = Instance.new("Frame")
+Window.Name = "MainWindow"
+Window.Size = UDim2.new(0, 450, 0, 600)
+Window.Position = UDim2.new(0.3, 0, 0.1, 0)
+Window.BackgroundColor3 = Color3.fromRGB(40, 0, 60) -- Màu tím đậm hơn
+Window.BorderSizePixel = 0
+Window.Active = true
+Window.Draggable = true
+Window.Parent = ScreenGui
+
+-- Corner & Stroke
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = Window
+
+-- Title Bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(60, 0, 80)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = Window
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -50, 1, 0)
+Title.Position = UDim2.new(0,0,0,0)
+Title.BackgroundTransparency = 1
+Title.Text = "✨ THAIHUD V3.3 | Loader ✨"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 20
+Title.TextXAlignment = Enum.TextXAlignment.Center
+Title.Parent = TitleBar
+
+-- Nút Toggle (Ẩn/Hiện) Window
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size = UDim2.new(0, 30, 0, 30)
+ToggleBtn.Position = UDim2.new(1, -35, 0, 5)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 150)
+ToggleBtn.Text = "X"
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.TextSize = 16
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.Parent = TitleBar
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    Window.Visible = not Window.Visible
+    ToggleBtn.Text = Window.Visible and "X" or "O"
+end)
+
+
+-- Log/Status Message (Đã chuyển thành Log Console)
+local LogFrame = Instance.new("ScrollingFrame")
+LogFrame.Name = "LogConsole"
+LogFrame.Size = UDim2.new(1, -20, 0, 80) -- Kích thước lớn hơn
+LogFrame.Position = UDim2.new(0, 10, 1, -90) -- Đặt phía dưới
+LogFrame.BackgroundTransparency = 0.8
+LogFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+LogFrame.CanvasSize = UDim2.new(0, 0, 0, 100) -- Sẽ được cập nhật
+LogFrame.Parent = Window
+LogFrame.ScrollBarThickness = 4
+
+local LogText = Instance.new("TextLabel")
+LogText.Size = UDim2.new(1, -5, 0, 100)
+LogText.Position = UDim2.new(0, 0, 0, 0)
+LogText.BackgroundTransparency = 1
+LogText.TextColor3 = Color3.fromRGB(255, 255, 255)
+LogText.Font = Enum.Font.Code
+LogText.TextSize = 12
+LogText.TextXAlignment = Enum.TextXAlignment.Left
+LogText.TextYAlignment = Enum.TextYAlignment.Top
+LogText.TextWrapped = true
+LogText.Parent = LogFrame
+LogText.Text = "Log Console Initialized.\n"
+
+local maxLogLines = 8
+local logLines = {"Log Console Initialized."}
+
+local function updateStatus(message, color)
+    local timestamp = os.date("%H:%M:%S")
+    local prefix = ""
+    if color == Color3.fromRGB(0, 255, 0) then
+        prefix = "[SUCCESS]"
+    elseif color == Color3.fromRGB(255, 0, 0) then
+        prefix = "[ERROR]"
+    elseif color == Color3.fromRGB(255, 128, 0) then
+        prefix = "[WARNING]"
+    else
+        prefix = "[INFO]"
+    end
+
+    local newLog = string.format("[%s %s] %s", timestamp, prefix, message)
+    
+    table.insert(logLines, newLog)
+    
+    -- Giới hạn số dòng log
+    if #logLines > maxLogLines then
+        table.remove(logLines, 1)
+    end
+    
+    LogText.Text = table.concat(logLines, "\n")
+    LogText.TextColor3 = Color3.fromRGB(255, 255, 255) -- Giữ màu chữ trắng/sáng trong Log
+
+    -- Cập nhật CanvasSize để scroll được
+    local newCanvasY = math.max(LogText.TextSize * #logLines + 10, LogFrame.Size.Y.Offset + 1)
+    LogFrame.CanvasSize = UDim2.new(0, 0, 0, newCanvasY)
+    
+    -- Tự động cuộn xuống
+    LogFrame.CanvasPosition = Vector2.new(0, newCanvasY - LogFrame.AbsoluteSize.Y)
 end
 
-local Window = Library.CreateLib("❤️ THAIDUI HUB V2 ❤️", "DarkTheme")
+-- Toggle HUD bằng phím K
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.K then
+        ScreenGui.Enabled = not ScreenGui.Enabled
+    end
+end)
 
--- Script Data (Giữ nguyên)
-local scripts = {
-    ["Blox Fruits"] = {
-        ["Gravity Hub"] = "https://raw.githubusercontent.com/Dev-GravityHub/BloxFruit/refs/heads/main/Main.lua",
-        ["W-Azure"] = "https://api.luarmor.net/files/v3/loaders/85e904ae1ff30824c1aa007fc7324f8f.lua",
-        ["BlueX Hub"] = "https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua",
-        ["Master Hub"] = "https://raw.githubusercontent.com/KiddoHiru/BloxFruits/main/MasterHub.lua",
-        ["Astral Hub"] = "https://raw.githubusercontent.com/Overgustx2/Main/refs/heads/main/BloxFruits_25.html",
-        ["Teddy Hub"] = "https://raw.githubusercontent.com/Teddyseetink/Haidepzai/refs/heads/main/TeddyHub.lua",
-        ["Kaitun Script"] = "https://raw.githubusercontent.com/shinichi-dz/phucshinsayhi/refs/heads/main/KaitunBloxFruit.lua",
-        ["Server VIP"] = "https://raw.githubusercontent.com/anuragaming1/Meow_gaming/refs/heads/main/Servervip.lua.txt",
-        ["Ngọc Bổng"] = "https://raw.githubusercontent.com/ngocbonggaming/script/refs/heads/main/NgocBongVn.lua",
-        ["Quantum Hub"] = "https://raw.githubusercontent.com/flazhy/QuantumOnyx/refs/heads/main/QuantumOnyx.lua",
-        ["TyBoy"] = "https://raw.githubusercontent.com/TBoyRoblox727/TBoyRobloxYTB/refs/heads/main/AllScriptBF.txt",
-        ["Hód Server"] = "https://github.com/WhiteX1208/Scripts/blob/main/HopScript.luau?raw=true"
-    },
-    ["Plants vs Brainrots"] = {
-        ["Speed Hub"] = "https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Speed%20Hub%20X.lua"
-    },
-    ["Cướp 1 Brainrots"] = {
-        ["Luin Lớn"] = "http://luminon.top/loader.lua",
-        ["Luin Nhỏ"] = "http://luminon.top/mini.lua",
-        ["Vietnam Hub"] = "https://raw.githubusercontent.com/replit8173/VietnamHub/refs/heads/main/VietnamseHub.lua"
-    }
+-- Nút Clear Script
+local ClearBtn = Instance.new("TextButton")
+ClearBtn.Size = UDim2.new(1, -20, 0, 30)
+ClearBtn.Position = UDim2.new(0, 10, 1, -50)
+ClearBtn.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
+ClearBtn.Text = "KILL/CLEAR SCRIPTS"
+ClearBtn.Font = Enum.Font.GothamBold
+ClearBtn.TextSize = 16
+ClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ClearBtn.Parent = Window
+
+ClearBtn.MouseButton1Click:Connect(clearAllScripts)
+
+
+-- ========= Script Store (Dữ liệu của bạn) =========
+local ScriptStore = {
+    -- Blox Fruits cũ & mới
+    {name="Gravity Hub", link="https://raw.githubusercontent.com/Dev-GravityHub/BloxFruit/refs/heads/main/Main.lua"},
+    {name="W-Azure", link="https://api.luarmor.net/files/v3/loaders/85e904ae1ff30824c1aa007fc7324f8f.lua"},
+    {name="BlueX Hub", link="https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua"},
+    {name="Master Hub", link="https://raw.githubusercontent.com/KiddoHiru/BloxFruits/main/MasterHub.lua"},
+    {name="Astral Hub", link="https://raw.githubusercontent.com/Overgustx2/Main/refs/heads/main/BloxFruits_25.html"},
+    {name="Teddy Hub", link="https://raw.githubusercontent.com/Teddyseetink/Haidepzai/refs/heads/main/TeddyHub.lua"},
+    {name="Kaitun Script", link="https://raw.githubusercontent.com/shinichi-dz/phucshinsayhi/refs/heads/main/KaitunBloxFruit.lua"},
+    {name="Server VIP", link="https://raw.githubusercontent.com/anuragaming1/Meow_gaming/refs/heads/main/Servervip.lua.txt"},
+    {name="Ngọc Bổng", link="https://raw.githubusercontent.com/ngocbonggaming/script/refs/heads/main/NgocBongVn.lua"},
+    {name="Quantum Hub", link="https://raw.githubusercontent.com/flazhy/QuantumOnyx/refs/heads/main/QuantumOnyx.lua"},
+    {name="TyBoy", link="https://raw.githubusercontent.com/TBoyRoblox727/TBoyRobloxYTB/refs/heads/main/AllScriptBF.txt"},
+    {name="Hód Server", link="https://github.com/WhiteX1208/Scripts/blob/main/HopScript.luau?raw=true"},
+
+    -- Blox Fruits mới
+    {name="Mukuro Hub", link="https://raw.githubusercontent.com/xQuartyx/MukuroHub/main/BloxFruit"},
+    {name="Hoho Hub", link="https://raw.githubusercontent.com/acsu123/HohoV2/refs/heads/main/HohoHub.lua"},
+    {name="Redz Hub", link="https://raw.githubusercontent.com/RedzHubs/RedzScripts/main/BloxFruit.lua"},
+    {name="Phantom Hub", link="https://raw.githubusercontent.com/Phant0mScripts/BloxFruits/main/Loader.lua"},
+    {name="Void Hub", link="https://raw.githubusercontent.com/VoidMasterScript/VoidHub/main/Loader.lua"},
+    {name="Zen Hub", link="https://raw.githubusercontent.com/ZenHubTeam/BloxFruit/main/Loader.lua"},
+    {name="Neva Hub", link="https://raw.githubusercontent.com/NevaHubDEV/Loader/main/NevaBF.lua"},
+    {name="FlameX Hub", link="https://raw.githubusercontent.com/FlameXHub/Main/main/Loader.lua"},
+    {name="Mango Hub", link="https://raw.githubusercontent.com/MangoHubDev/MangoHub/main/BloxFruits.lua"},
+    {name="Xero Hub", link="https://raw.githubusercontent.com/XeroHubTeam/Main/main/BloxFruits.lua"},
+    {name="Fusion Hub", link="https://raw.githubusercontent.com/FusionHubDev/Fusion/main/BloxFruit.lua"},
+    {name="Delta Hub", link="https://raw.githubusercontent.com/DeltaXHub/DeltaHub/main/BloxFruit.lua"},
+    {name="Sakura Hub", link="https://raw.githubusercontent.com/SakuraScripts/Loader/main/SakuraBF.lua"},
+    {name="Flame Hub", link="https://raw.githubusercontent.com/FlameScripts/Loader/main/FlameBF.lua"},
+    {name="Aureus Hub", link="https://raw.githubusercontent.com/AureusTeam/Loader/main/BloxFruits.lua"},
+
+    -- PvB
+    {name="Speed Hub", link="https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Speed%20Hub%20X.lua"},
+
+    -- Cướp 1 Brainrots
+    {name="Luin Lớn", link="http://luminon.top/loader.lua"},
+    {name="Luin Nhỏ", link="http://luminon.top/mini.lua"},
+    {name="Vietnam Hub", link="https://raw.githubusercontent.com/replit8173/VietnamHub/refs/heads/main/VietnamseHub.lua"}
 }
 
---=============== TẠO TAB SCRIPT ===============--
+-- ========= Script List UI (Đã Tối ưu) =========
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -20, 1, -140) -- Giảm kích thước để chừa chỗ cho Log Console và Nút Clear
+ScrollFrame.Position = UDim2.new(0, 10, 0, 50)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, #ScriptStore * 40)
+ScrollFrame.ScrollBarThickness = 6
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.Parent = Window
 
-for Name, List in pairs(scripts) do
-    local Tab = Window:NewTab(Name)
-    local Section = Tab:NewSection("Danh sách script")
+local UIGridLayout = Instance.new("UIGridLayout")
+UIGridLayout.CellSize = UDim2.new(1, -10, 0, 36)
+UIGridLayout.CellPadding = UDim2.new(0, 0, 0, 4)
+UIGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+UIGridLayout.Parent = ScrollFrame
 
-    for BtnName, Link in pairs(List) do
-        Section:NewButton(BtnName, "Run script", function()
-            askConfirmation("Run Script", "Run \""..tostring(BtnName).."\"? This will download and execute remote code.", function()
-                local ok = safeExecuteUrl(Link)
-                if ok then
-                    warn("[THAIDUI] ✅ Successfully executed: " .. tostring(BtnName))
-                end
-            end)
+for i, s in ipairs(ScriptStore) do
+    local Btn = Instance.new("TextButton")
+    Btn.Name = "Btn_" .. s.name:gsub(" ", "_")
+    Btn.Size = UDim2.new(1, 0, 0, 36)
+    Btn.BackgroundColor3 = Color3.fromRGB(100, 0, 120) -- Màu nút hơi tối hơn
+    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 16
+    Btn.Text = s.name
+    Btn.Parent = ScrollFrame
+
+    -- Hover Effect
+    Btn.MouseEnter:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(150, 0, 180) end)
+    Btn.MouseLeave:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(100, 0, 120) end)
+    
+    Btn.MouseButton1Click:Connect(function()
+        updateStatus("Requesting " .. s.name .. "...", Color3.fromRGB(255, 255, 0))
+        
+        Btn.Active = false
+        task.delay(0.1, function() Btn.Active = true end) -- Dùng task.delay thay cho delay
+        
+        local ok, code = pcall(function()
+            return game:HttpGet(s.link)
         end)
-    end
-end
-
---========================================================--
---==============  TAB THÔNG SỐ NGƯỜI CHƠI  ===============--
---========================================================--
-
-local PlayerTab = Window:NewTab("Thông Số Người Chơi")
-local Section = PlayerTab:NewSection("Stats")
-
-local statsOn = false
-
--- Cleanup existing stat GUI
-local existingStatsGui = game.CoreGui:FindFirstChild("THAIDUI_Stats")
-if existingStatsGui then
-    existingStatsGui:Destroy()
-end
-
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "THAIDUI_Stats"
-ScreenGui.Parent = game.CoreGui
-local StatsFrame = Instance.new("Frame")
-StatsFrame.Name = "THAIDUI_Frame"
-StatsFrame.Parent = ScreenGui
-local Text = Instance.new("TextLabel")
-Text.Name = "THAIDUI_Text"
-Text.Parent = StatsFrame
-
--- Cấu hình Frame
-StatsFrame.Size = UDim2.new(0, 240, 0, 140)
-StatsFrame.Position = UDim2.new(0.70, 0, 0.05, 0)
-StatsFrame.BackgroundTransparency = 0.2
-StatsFrame.BorderSizePixel = 0
-StatsFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-StatsFrame.Visible = false
-StatsFrame.Active = true
-StatsFrame.Draggable = true
-
--- Cấu hình Text
-Text.Size = UDim2.new(1, 0, 1, 0)
-Text.BackgroundTransparency = 1
-Text.TextColor3 = Color3.fromRGB(255, 255, 255)
-Text.Font = Enum.Font.Code
-Text.TextXAlignment = Enum.TextXAlignment.Left
-Text.TextYAlignment = Enum.TextYAlignment.Top
-Text.TextWrapped = true
-Text.TextSize = 12
-
-Section:NewToggle("Bật Stats", "Toggle Player Stats Overlay", function(state)
-    statsOn = state
-    StatsFrame.Visible = state
-end)
-
--- FPS Counter (Đã sửa đổi để tính toán FPS chính xác)
-local fpsCounter = 0
-local lastTime = tick()
-local fps = 0
-
-game:GetService("RunService").RenderStepped:Connect(function()
-    fpsCounter = fpsCounter + 1
-    local now = tick()
-    if now - lastTime >= 1 then
-        fps = math.floor(fpsCounter / (now - lastTime))
-        fpsCounter = 0
-        lastTime = now
-    end
-end)
-
--- Update Stats
-task.spawn(function()
-    local Players = game:GetService("Players")
-    while task.wait(0.1) do
-        if statsOn then
-            local plr = Players.LocalPlayer
-            local char = plr and plr.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local hum = char and char:FindFirstChild("Humanoid")
+        
+        if ok and code and type(code) == "string" and code ~= "" then
             
-            -- Đảm bảo không truy cập game:GetService("Stats") nếu không có (Exploit dependent)
-            local ping = 0
-            if game:GetService("Stats") and game:GetService("Stats").Network.ServerStatsItem["Data Ping"] then
-                ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue() or 0
+            local fn, err = loadstring(code)
+            
+            if fn then
+                local success, run_err = pcall(fn)
+                if success then
+                    updateStatus("Loaded and executed: " .. s.name, Color3.fromRGB(0, 255, 0))
+                else
+                    -- Lỗi khi script đang chạy
+                    updateStatus("RUNTIME ERROR: " .. s.name .. " -> " .. tostring(run_err), Color3.fromRGB(255, 0, 0))
+                end
+            else
+                -- Lỗi khi loadstring (Script không phải Luau hợp lệ)
+                updateStatus("LOADSTRING ERROR: " .. s.name .. " (Not valid Luau code) -> " .. tostring(err), Color3.fromRGB(255, 128, 0))
             end
-
-            local posText = "N/A"
-            if hrp then
-                -- Đã sửa: Chuyển đổi Vector3 sang chuỗi an toàn hơn
-                posText = string.format("(%.2f, %.2f, %.2f)", hrp.Position.X, hrp.Position.Y, hrp.Position.Z)
-            end
-
-            Text.Text =
-                "❤️ THAIDUI Stats ❤️\n" ..
-                "WalkSpeed: " .. (hum and hum.WalkSpeed or 0) .. "\n" ..
-                "JumpPower: " .. (hum and hum.JumpPower or 0) .. "\n" ..
-                "Health: " .. (hum and math.floor(hum.Health) or 0) .. "\n" ..
-                "FPS: " .. fps .. "\n" ..
-                "Ping: " .. ping .. "ms\n" ..
-                "Pos: " .. posText
+        else
+            -- Lỗi khi tải script (URL hỏng/Server down)
+            updateStatus("FETCH FAILED: " .. s.name .. " (URL Down/Empty response)", Color3.fromRGB(255, 0, 0))
         end
-    end
-end)
+        
+        -- Thêm tất cả ScreenGui/Frame mới vào danh sách để chuẩn bị cho Clear
+        -- Đây là một giải pháp không hoàn hảo nhưng tốt hơn không có
+        task.delay(1, function()
+            for _, child in ipairs(CoreGui:GetChildren()) do
+                if child:IsA("ScreenGui") and child.Name ~= ScreenGui.Name and not table.find(CreatedInstances, child) then
+                    table.insert(CreatedInstances, child)
+                elseif child.Parent == Players.LocalPlayer.PlayerGui and not table.find(CreatedInstances, child) then
+                     table.insert(CreatedInstances, child)
+                end
+            end
+        end)
+    end)
+end
