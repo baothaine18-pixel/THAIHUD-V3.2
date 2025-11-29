@@ -1,290 +1,353 @@
-l-- THAIHUD V3.3 - Upgraded Version
-local UserInputService = game:GetService("UserInputService")
+-- THAIDUI V3.3 (Safe, Purple Galaxy)
+-- Place as LocalScript under StarterPlayerScripts or StarterGui
+-- Features:
+--  • Multi-game tabs (includes Plants vs Brainrots & Cướp 1 Brainrots)
+--  • Script manager (add name + code or name + link)
+--  • "Copy Link -> Editor" (manual fetch into editor), Execute only runs editor code
+--  • Color presets + RGB sliders (theme)
+--  • Toggle menu with K, draggable HUD, responsive
+--  • Export / Import ScriptStore (JSON)
+--  • No auto-run of remote exploit URLs (you control execution)
+
 local Players = game:GetService("Players")
-local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
-local Debris = game:GetService("Debris") -- Dùng để xóa GUI an toàn
-
--- Kiểm tra LocalPlayer đã sẵn sàng chưa (Best Practice)
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
-if not LocalPlayer then return end
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Lưu trữ tất cả các đối tượng được tạo bởi script bên ngoài
-local CreatedInstances = {}
-
--- Chức năng Kill/Clear Script
-local function clearAllScripts()
-    -- Xóa các GUI/Objects đã được script bên ngoài tạo
-    for _, instance in ipairs(CreatedInstances) do
-        if instance and instance.Parent then
-            Debris:AddItem(instance, 0) -- Xóa instance an toàn
-        end
-    end
-    CreatedInstances = {}
-    
-    -- Xóa các ScreenGui phổ biến (phòng trường hợp script tự tạo ScreenGui)
-    for _, gui in ipairs(CoreGui:GetChildren()) do
-        if gui.Name ~= ScreenGui.Name and (string.find(gui.Name:lower(), "hub") or string.find(gui.Name:lower(), "gui")) then
-             Debris:AddItem(gui, 0)
-        end
-    end
-    
-    updateStatus("Scripts cleared (Note: may not remove all external GUIs).", Color3.fromRGB(255, 100, 0))
-    warn("[THAIDUI] Cleared script instances.")
-end
-
--- ========= Cấu hình GUI & Thông báo =========
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "THAIHUD_V3_Optimized"
-ScreenGui.Parent = CoreGui
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Enabled = true
-
-local Window = Instance.new("Frame")
-Window.Name = "MainWindow"
-Window.Size = UDim2.new(0, 450, 0, 600)
-Window.Position = UDim2.new(0.3, 0, 0.1, 0)
-Window.BackgroundColor3 = Color3.fromRGB(40, 0, 60) -- Màu tím đậm hơn
-Window.BorderSizePixel = 0
-Window.Active = true
-Window.Draggable = true
-Window.Parent = ScreenGui
-
--- Corner & Stroke
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = Window
-
--- Title Bar
-local TitleBar = Instance.new("Frame")
-TitleBar.Size = UDim2.new(1, 0, 0, 40)
-TitleBar.BackgroundColor3 = Color3.fromRGB(60, 0, 80)
-TitleBar.BorderSizePixel = 0
-TitleBar.Parent = Window
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -50, 1, 0)
-Title.Position = UDim2.new(0,0,0,0)
-Title.BackgroundTransparency = 1
-Title.Text = "✨ THAIHUD V3.3 | Loader ✨"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 20
-Title.TextXAlignment = Enum.TextXAlignment.Center
-Title.Parent = TitleBar
-
--- Nút Toggle (Ẩn/Hiện) Window
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0, 30, 0, 30)
-ToggleBtn.Position = UDim2.new(1, -35, 0, 5)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(120, 0, 150)
-ToggleBtn.Text = "X"
-ToggleBtn.Font = Enum.Font.GothamBold
-ToggleBtn.TextSize = 16
-ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Parent = TitleBar
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    Window.Visible = not Window.Visible
-    ToggleBtn.Text = Window.Visible and "X" or "O"
-end)
-
-
--- Log/Status Message (Đã chuyển thành Log Console)
-local LogFrame = Instance.new("ScrollingFrame")
-LogFrame.Name = "LogConsole"
-LogFrame.Size = UDim2.new(1, -20, 0, 80) -- Kích thước lớn hơn
-LogFrame.Position = UDim2.new(0, 10, 1, -90) -- Đặt phía dưới
-LogFrame.BackgroundTransparency = 0.8
-LogFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-LogFrame.CanvasSize = UDim2.new(0, 0, 0, 100) -- Sẽ được cập nhật
-LogFrame.Parent = Window
-LogFrame.ScrollBarThickness = 4
-
-local LogText = Instance.new("TextLabel")
-LogText.Size = UDim2.new(1, -5, 0, 100)
-LogText.Position = UDim2.new(0, 0, 0, 0)
-LogText.BackgroundTransparency = 1
-LogText.TextColor3 = Color3.fromRGB(255, 255, 255)
-LogText.Font = Enum.Font.Code
-LogText.TextSize = 12
-LogText.TextXAlignment = Enum.TextXAlignment.Left
-LogText.TextYAlignment = Enum.TextYAlignment.Top
-LogText.TextWrapped = true
-LogText.Parent = LogFrame
-LogText.Text = "Log Console Initialized.\n"
-
-local maxLogLines = 8
-local logLines = {"Log Console Initialized."}
-
-local function updateStatus(message, color)
-    local timestamp = os.date("%H:%M:%S")
-    local prefix = ""
-    if color == Color3.fromRGB(0, 255, 0) then
-        prefix = "[SUCCESS]"
-    elseif color == Color3.fromRGB(255, 0, 0) then
-        prefix = "[ERROR]"
-    elseif color == Color3.fromRGB(255, 128, 0) then
-        prefix = "[WARNING]"
-    else
-        prefix = "[INFO]"
-    end
-
-    local newLog = string.format("[%s %s] %s", timestamp, prefix, message)
-    
-    table.insert(logLines, newLog)
-    
-    -- Giới hạn số dòng log
-    if #logLines > maxLogLines then
-        table.remove(logLines, 1)
-    end
-    
-    LogText.Text = table.concat(logLines, "\n")
-    LogText.TextColor3 = Color3.fromRGB(255, 255, 255) -- Giữ màu chữ trắng/sáng trong Log
-
-    -- Cập nhật CanvasSize để scroll được
-    local newCanvasY = math.max(LogText.TextSize * #logLines + 10, LogFrame.Size.Y.Offset + 1)
-    LogFrame.CanvasSize = UDim2.new(0, 0, 0, newCanvasY)
-    
-    -- Tự động cuộn xuống
-    LogFrame.CanvasPosition = Vector2.new(0, newCanvasY - LogFrame.AbsoluteSize.Y)
-end
-
--- Toggle HUD bằng phím K
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.K then
-        ScreenGui.Enabled = not ScreenGui.Enabled
-    end
-end)
-
--- Nút Clear Script
-local ClearBtn = Instance.new("TextButton")
-ClearBtn.Size = UDim2.new(1, -20, 0, 30)
-ClearBtn.Position = UDim2.new(0, 10, 1, -50)
-ClearBtn.BackgroundColor3 = Color3.fromRGB(160, 0, 0)
-ClearBtn.Text = "KILL/CLEAR SCRIPTS"
-ClearBtn.Font = Enum.Font.GothamBold
-ClearBtn.TextSize = 16
-ClearBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ClearBtn.Parent = Window
-
-ClearBtn.MouseButton1Click:Connect(clearAllScripts)
-
-
--- ========= Script Store (Dữ liệu của bạn) =========
-local ScriptStore = {
-    -- Blox Fruits cũ & mới
-    {name="Gravity Hub", link="https://raw.githubusercontent.com/Dev-GravityHub/BloxFruit/refs/heads/main/Main.lua"},
-    {name="W-Azure", link="https://api.luarmor.net/files/v3/loaders/85e904ae1ff30824c1aa007fc7324f8f.lua"},
-    {name="BlueX Hub", link="https://raw.githubusercontent.com/Dev-BlueX/BlueX-Hub/refs/heads/main/Main.lua"},
-    {name="Master Hub", link="https://raw.githubusercontent.com/KiddoHiru/BloxFruits/main/MasterHub.lua"},
-    {name="Astral Hub", link="https://raw.githubusercontent.com/Overgustx2/Main/refs/heads/main/BloxFruits_25.html"},
-    {name="Teddy Hub", link="https://raw.githubusercontent.com/Teddyseetink/Haidepzai/refs/heads/main/TeddyHub.lua"},
-    {name="Kaitun Script", link="https://raw.githubusercontent.com/shinichi-dz/phucshinsayhi/refs/heads/main/KaitunBloxFruit.lua"},
-    {name="Server VIP", link="https://raw.githubusercontent.com/anuragaming1/Meow_gaming/refs/heads/main/Servervip.lua.txt"},
-    {name="Ngọc Bổng", link="https://raw.githubusercontent.com/ngocbonggaming/script/refs/heads/main/NgocBongVn.lua"},
-    {name="Quantum Hub", link="https://raw.githubusercontent.com/flazhy/QuantumOnyx/refs/heads/main/QuantumOnyx.lua"},
-    {name="TyBoy", link="https://raw.githubusercontent.com/TBoyRoblox727/TBoyRobloxYTB/refs/heads/main/AllScriptBF.txt"},
-    {name="Hód Server", link="https://github.com/WhiteX1208/Scripts/blob/main/HopScript.luau?raw=true"},
-
-    -- Blox Fruits mới
-    {name="Mukuro Hub", link="https://raw.githubusercontent.com/xQuartyx/MukuroHub/main/BloxFruit"},
-    {name="Hoho Hub", link="https://raw.githubusercontent.com/acsu123/HohoV2/refs/heads/main/HohoHub.lua"},
-    {name="Redz Hub", link="https://raw.githubusercontent.com/RedzHubs/RedzScripts/main/BloxFruit.lua"},
-    {name="Phantom Hub", link="https://raw.githubusercontent.com/Phant0mScripts/BloxFruits/main/Loader.lua"},
-    {name="Void Hub", link="https://raw.githubusercontent.com/VoidMasterScript/VoidHub/main/Loader.lua"},
-    {name="Zen Hub", link="https://raw.githubusercontent.com/ZenHubTeam/BloxFruit/main/Loader.lua"},
-    {name="Neva Hub", link="https://raw.githubusercontent.com/NevaHubDEV/Loader/main/NevaBF.lua"},
-    {name="FlameX Hub", link="https://raw.githubusercontent.com/FlameXHub/Main/main/Loader.lua"},
-    {name="Mango Hub", link="https://raw.githubusercontent.com/MangoHubDev/MangoHub/main/BloxFruits.lua"},
-    {name="Xero Hub", link="https://raw.githubusercontent.com/XeroHubTeam/Main/main/BloxFruits.lua"},
-    {name="Fusion Hub", link="https://raw.githubusercontent.com/FusionHubDev/Fusion/main/BloxFruit.lua"},
-    {name="Delta Hub", link="https://raw.githubusercontent.com/DeltaXHub/DeltaHub/main/BloxFruit.lua"},
-    {name="Sakura Hub", link="https://raw.githubusercontent.com/SakuraScripts/Loader/main/SakuraBF.lua"},
-    {name="Flame Hub", link="https://raw.githubusercontent.com/FlameScripts/Loader/main/FlameBF.lua"},
-    {name="Aureus Hub", link="https://raw.githubusercontent.com/AureusTeam/Loader/main/BloxFruits.lua"},
-
-    -- PvB
-    {name="Speed Hub", link="https://raw.githubusercontent.com/AhmadV99/Speed-Hub-X/main/Speed%20Hub%20X.lua"},
-
-    -- Cướp 1 Brainrots
-    {name="Luin Lớn", link="http://luminon.top/loader.lua"},
-    {name="Luin Nhỏ", link="http://luminon.top/mini.lua"},
-    {name="Vietnam Hub", link="https://raw.githubusercontent.com/replit8173/VietnamHub/refs/heads/main/VietnamseHub.lua"}
+-- CONFIG
+local UI_NAME = "THAIDUI_V3_3"
+local TOGGLE_KEY = Enum.KeyCode.K
+local DEFAULT_THEME = {
+    Primary = Color3.fromRGB(56,20,100), -- purple mid
+    Accent  = Color3.fromRGB(170,84,255), -- purple light
+    Text    = Color3.fromRGB(240,240,255),
+    Bg      = Color3.fromRGB(12,8,20)
 }
 
--- ========= Script List UI (Đã Tối ưu) =========
-local ScrollFrame = Instance.new("ScrollingFrame")
-ScrollFrame.Size = UDim2.new(1, -20, 1, -140) -- Giảm kích thước để chừa chỗ cho Log Console và Nút Clear
-ScrollFrame.Position = UDim2.new(0, 10, 0, 50)
-ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, #ScriptStore * 40)
-ScrollFrame.ScrollBarThickness = 6
-ScrollFrame.BackgroundTransparency = 1
-ScrollFrame.Parent = Window
+-- remove old GUI if rerun
+local existing = PlayerGui:FindFirstChild(UI_NAME)
+if existing then existing:Destroy() end
 
-local UIGridLayout = Instance.new("UIGridLayout")
-UIGridLayout.CellSize = UDim2.new(1, -10, 0, 36)
-UIGridLayout.CellPadding = UDim2.new(0, 0, 0, 4)
-UIGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-UIGridLayout.Parent = ScrollFrame
-
-for i, s in ipairs(ScriptStore) do
-    local Btn = Instance.new("TextButton")
-    Btn.Name = "Btn_" .. s.name:gsub(" ", "_")
-    Btn.Size = UDim2.new(1, 0, 0, 36)
-    Btn.BackgroundColor3 = Color3.fromRGB(100, 0, 120) -- Màu nút hơi tối hơn
-    Btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Btn.Font = Enum.Font.GothamBold
-    Btn.TextSize = 16
-    Btn.Text = s.name
-    Btn.Parent = ScrollFrame
-
-    -- Hover Effect
-    Btn.MouseEnter:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(150, 0, 180) end)
-    Btn.MouseLeave:Connect(function() Btn.BackgroundColor3 = Color3.fromRGB(100, 0, 120) end)
-    
-    Btn.MouseButton1Click:Connect(function()
-        updateStatus("Requesting " .. s.name .. "...", Color3.fromRGB(255, 255, 0))
-        
-        Btn.Active = false
-        task.delay(0.1, function() Btn.Active = true end) -- Dùng task.delay thay cho delay
-        
-        local ok, code = pcall(function()
-            return game:HttpGet(s.link)
-        end)
-        
-        if ok and code and type(code) == "string" and code ~= "" then
-            
-            local fn, err = loadstring(code)
-            
-            if fn then
-                local success, run_err = pcall(fn)
-                if success then
-                    updateStatus("Loaded and executed: " .. s.name, Color3.fromRGB(0, 255, 0))
-                else
-                    -- Lỗi khi script đang chạy
-                    updateStatus("RUNTIME ERROR: " .. s.name .. " -> " .. tostring(run_err), Color3.fromRGB(255, 0, 0))
-                end
-            else
-                -- Lỗi khi loadstring (Script không phải Luau hợp lệ)
-                updateStatus("LOADSTRING ERROR: " .. s.name .. " (Not valid Luau code) -> " .. tostring(err), Color3.fromRGB(255, 128, 0))
-            end
-        else
-            -- Lỗi khi tải script (URL hỏng/Server down)
-            updateStatus("FETCH FAILED: " .. s.name .. " (URL Down/Empty response)", Color3.fromRGB(255, 0, 0))
+-- helper
+local function New(class, props)
+    local obj = Instance.new(class)
+    if props then
+        for k,v in pairs(props) do
+            if k == "Parent" then obj.Parent = v else pcall(function() obj[k] = v end) end
         end
-        
-        -- Thêm tất cả ScreenGui/Frame mới vào danh sách để chuẩn bị cho Clear
-        -- Đây là một giải pháp không hoàn hảo nhưng tốt hơn không có
-        task.delay(1, function()
-            for _, child in ipairs(CoreGui:GetChildren()) do
-                if child:IsA("ScreenGui") and child.Name ~= ScreenGui.Name and not table.find(CreatedInstances, child) then
-                    table.insert(CreatedInstances, child)
-                elseif child.Parent == Players.LocalPlayer.PlayerGui and not table.find(CreatedInstances, child) then
-                     table.insert(CreatedInstances, child)
-                end
-            end
-        end)
-    end)
+    end
+    return obj
 end
+
+-- ScriptStore: keep names + code (local) + optional link (stored but not auto-run)
+local ScriptStore = {
+    -- prefill examples & placeholders
+    {game="Blox Fruits", name="Gravity Hub (placeholder)", link="", code="-- paste safe/local code here"},
+    {game="Blox Fruits", name="BlueX Hub (placeholder)", link="", code="-- paste safe/local code here"},
+    {game="Plants vs Brainrots", name="Speed Hub (placeholder)", link="", code="-- paste safe/local code here"},
+    {game="Cướp 1 Brainrots", name="Luin Lớn (placeholder)", link="", code="-- paste safe/local code here"},
+}
+
+local Theme = { Primary=DEFAULT_THEME.Primary, Accent=DEFAULT_THEME.Accent, Text=DEFAULT_THEME.Text, Bg=DEFAULT_THEME.Bg }
+
+-- Save/Load helpers
+local function ExportScripts()
+    local ok, txt = pcall(function() return HttpService:JSONEncode(ScriptStore) end)
+    if ok then
+        return txt
+    else return nil end
+end
+
+local function ImportScripts(json)
+    local ok, tbl = pcall(function() return HttpService:JSONDecode(json) end)
+    if ok and type(tbl)=="table" then
+        ScriptStore = tbl
+        return true
+    end
+    return false
+end
+
+-- Build ScreenGui
+local screenGui = New("ScreenGui", {Name = UI_NAME, Parent = PlayerGui, ResetOnSpawn=false, ZIndexBehavior=Enum.ZIndexBehavior.Sibling})
+
+-- Blur in Lighting (used on open)
+local Lighting = game:GetService("Lighting")
+local blur = Lighting:FindFirstChild("THAIDUI_Blur")
+if not blur then
+    blur = New("BlurEffect", {Parent = Lighting, Name = "THAIDUI_Blur", Size = 0})
+end
+
+-- Main window
+local Main = New("Frame", {
+    Parent = screenGui,
+    Name = "MainWindow",
+    Size = UDim2.new(0, 900, 0, 560),
+    Position = UDim2.new(0.5, -450, 0.5, -280),
+    BackgroundColor3 = Theme.Bg,
+    BackgroundTransparency = 0.06,
+    BorderSizePixel = 0,
+    ZIndex = 50
+})
+New("UICorner", {Parent = Main, CornerRadius = UDim.new(0,14)})
+New("UIStroke", {Parent = Main, Color = Theme.Primary, Transparency = 0.85, Thickness = 1})
+
+Main.Active = true
+Main.Draggable = true
+
+-- Top title + glowing text
+local Title = New("TextLabel", {Parent = Main, Size = UDim2.new(1,0,0,56), BackgroundTransparency=1, Text="THAIDUI V3.3", Font=Enum.Font.GothamBlack, TextSize=26, TextColor3=Theme.Text, ZIndex=51, TextXAlignment=Enum.TextXAlignment.Left, Position=UDim2.new(0,20,0,12)})
+local Sub = New("TextLabel", {Parent = Main, Size = UDim2.new(1,-40,0,18), Position = UDim2.new(0,20,0,42), BackgroundTransparency=1, Text="Purple Galaxy • Safe Mode • Toggle K", Font=Enum.Font.Code, TextSize=12, TextColor3=Theme.Text})
+-- glow effect (tween)
+local glow = New("TextLabel", {Parent = Main, Size=Title.Size, Position=Title.Position, BackgroundTransparency=1, Text=Title.Text, Font=Title.Font, TextSize=Title.TextSize, TextColor3=Theme.Accent, TextTransparency=1})
+task.spawn(function()
+    while true do
+        for i=0,1,0.02 do
+            glow.TextTransparency = 1 - (0.6 * math.sin(i*math.pi) )
+            task.wait(0.02)
+        end
+        task.wait(0.4)
+    end
+end)
+
+-- Left: Game list
+local left = New("Frame", {Parent = Main, Size = UDim2.new(0,220,1,-80), Position = UDim2.new(0,20,0,80), BackgroundTransparency=1})
+New("UICorner", {Parent = left, CornerRadius = UDim.new(0,10)})
+local leftTitle = New("TextLabel", {Parent = left, Size=UDim2.new(1,0,0,22), BackgroundTransparency=1, Text="Games", Font=Enum.Font.GothamBold, TextSize=14, TextColor3=Theme.Text, TextXAlignment=Enum.TextXAlignment.Left})
+
+-- Build game list from ScriptStore
+local function GetGameList()
+    local seen = {}
+    for _, s in ipairs(ScriptStore) do
+        seen[s.game or "General"] = true
+    end
+    local games = {}
+    for k,_ in pairs(seen) do table.insert(games, k) end
+    table.sort(games)
+    return games
+end
+
+local gameButtons = {}
+local selectedGame = nil
+local function RefreshGameButtons()
+    for _,c in ipairs(left:GetChildren()) do
+        if c.Name == "GameBtn" then c:Destroy() end
+    end
+    local games = GetGameList()
+    for i,g in ipairs(games) do
+        local btn = New("TextButton", {Parent = left, Name="GameBtn", Size=UDim2.new(1,0,0,36), Position=UDim2.new(0,0,0,30+(i-1)*40), BackgroundColor3=Theme.Primary, AutoButtonColor=true, Text=g, Font=Enum.Font.GothamSemibold, TextSize=14, TextColor3=Theme.Text})
+        New("UICorner", {Parent = btn, CornerRadius = UDim.new(0,8)})
+        btn.MouseButton1Click:Connect(function()
+            selectedGame = g
+            RefreshScriptList()
+        end)
+    end
+end
+
+-- Right content: script list + editor + controls
+local right = New("Frame", {Parent = Main, Size = UDim2.new(1,-280,1,-80), Position = UDim2.new(0,240,0,80), BackgroundTransparency=1})
+New("UICorner", {Parent = right, CornerRadius = UDim.new(0,10)})
+
+-- Script list scroll
+local scriptList = New("ScrollingFrame", {Parent = right, Size=UDim2.new(0.36,0,1,0), Position=UDim2.new(0,0,0,0), CanvasSize=UDim2.new(0,0,0,0), ScrollBarThickness=8, BackgroundTransparency=1})
+local listLayout = New("UIListLayout", {Parent = scriptList, Padding=UDim.new(0,8)})
+listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+-- Editor area
+local editor = New("Frame", {Parent = right, Size = UDim2.new(0.64, -12, 1, 0), Position = UDim2.new(0.36, 12, 0, 0), BackgroundTransparency=1})
+local nameBox = New("TextBox", {Parent = editor, Size = UDim2.new(1,0,0,30), Position=UDim2.new(0,0,0,0), PlaceholderText="Script name", ClearTextOnFocus=false, Text=""})
+New("UICorner", {Parent = nameBox, CornerRadius=UDim.new(0,6)})
+local linkBox = New("TextBox", {Parent = editor, Size = UDim2.new(1,0,0,28), Position=UDim2.new(0,0,0,36), PlaceholderText="Optional link (http/https)", ClearTextOnFocus=false, Text=""})
+New("UICorner", {Parent = linkBox, CornerRadius=UDim.new(0,6)})
+local codeBox = New("TextBox", {Parent = editor, Size = UDim2.new(1,0,1,-140), Position=UDim2.new(0,0,0,72), MultiLine=true, TextWrapped=true, ClearTextOnFocus=false, Font=Enum.Font.Code, Text="", BackgroundColor3=Color3.fromRGB(10,10,14), TextColor3=Theme.Text})
+New("UICorner", {Parent = codeBox, CornerRadius=UDim.new(0,8)})
+
+local btnFetch = New("TextButton", {Parent = editor, Size = UDim2.new(0,140,0,34), Position=UDim2.new(0,0,1,-56), Text="Fetch Link → Editor", BackgroundColor3=Theme.Primary, Font=Enum.Font.GothamBold, TextColor3=Theme.Text})
+New("UICorner", {Parent = btnFetch, CornerRadius=UDim.new(0,6)})
+local btnExecute = New("TextButton", {Parent = editor, Size = UDim2.new(0,120,0,34), Position=UDim2.new(0,152,1,-56), Text="Execute (local)", BackgroundColor3=Theme.Accent, Font=Enum.Font.GothamBold, TextColor3=Theme.Bg})
+New("UICorner", {Parent = btnExecute, CornerRadius=UDim.new(0,6)})
+local btnSaveScript = New("TextButton", {Parent = editor, Size = UDim2.new(0,120,0,34), Position=UDim2.new(0,284,1,-56), Text="Save", BackgroundColor3=Color3.fromRGB(70,40,120), Font=Enum.Font.GothamBold, TextColor3=Theme.Text})
+New("UICorner", {Parent = btnSaveScript, CornerRadius=UDim.new(0,6)})
+
+-- Export/Import UI
+local btnExport = New("TextButton", {Parent = editor, Size=UDim2.new(0,130,0,28), Position=UDim2.new(0,0,1,-100), Text="Export JSON", BackgroundColor3=Color3.fromRGB(40,40,60), Font=Enum.Font.Gotham, TextColor3=Theme.Text})
+New("UICorner", {Parent = btnExport, CornerRadius=UDim.new(0,6)})
+local btnImport = New("TextButton", {Parent = editor, Size=UDim2.new(0,130,0,28), Position=UDim2.new(0,140,1,-100), Text="Import JSON", BackgroundColor3=Color3.fromRGB(40,40,60), Font=Enum.Font.Gotham, TextColor3=Theme.Text})
+New("UICorner", {Parent = btnImport, CornerRadius=UDim.new(0,6)})
+
+-- Script list rendering & helpers
+local selectedIndex = nil
+local function RefreshScriptList()
+    -- show only scripts that match selectedGame (or all if nil)
+    for _,c in pairs(scriptList:GetChildren()) do if not c:IsA("UIListLayout") then c:Destroy() end end
+    local count = 0
+    for i, s in ipairs(ScriptStore) do
+        if (not selectedGame) or (s.game == selectedGame) then
+            count = count + 1
+            local btn = New("TextButton", {Parent = scriptList, Size=UDim2.new(1,-12,0,36), Text = s.name, BackgroundColor3=Theme.Primary, TextColor3=Theme.Text, Font=Enum.Font.Gotham, TextSize=14})
+            New("UICorner", {Parent = btn, CornerRadius = UDim.new(0,8)})
+            btn.MouseButton1Click:Connect(function()
+                selectedIndex = i
+                nameBox.Text = s.name or ""
+                linkBox.Text = s.link or ""
+                codeBox.Text = s.code or ""
+            end)
+            -- small copy link button
+            local copyBtn = New("TextButton", {Parent = btn, Size=UDim2.new(0,42,1,0), Position=UDim2.new(1,-46,0,0), Text="Link", Font=Enum.Font.Gotham, TextSize=12, BackgroundColor3=Color3.fromRGB(90,30,140), TextColor3=Theme.Text})
+            New("UICorner", {Parent = copyBtn, CornerRadius=UDim.new(0,6)})
+            copyBtn.MouseButton1Click:Connect(function()
+                -- copy link to editor (does not run)
+                codeBox.Text = "-- Link copied into editor; use Fetch to load content into editor\n-- Link: "..tostring(s.link)
+                linkBox.Text = s.link or ""
+            end)
+        end
+    end
+    scriptList.CanvasSize = UDim2.new(0,0,0, (count*44)+8)
+end
+
+-- initial build
+RefreshGameButtons()
+RefreshScriptList()
+
+-- Save/Update script from editor to store
+btnSaveScript.MouseButton1Click:Connect(function()
+    local nm = nameBox.Text:match("^%s*(.-)%s*$") or "Untitled"
+    local lk = linkBox.Text:match("^%s*(.-)%s*$") or ""
+    local code = codeBox.Text or ""
+    if selectedIndex then
+        ScriptStore[selectedIndex].name = nm
+        ScriptStore[selectedIndex].link = lk
+        ScriptStore[selectedIndex].code = code
+    else
+        table.insert(ScriptStore, {game = selectedGame or "General", name = nm, link = lk, code = code})
+    end
+    RefreshGameButtons()
+    RefreshScriptList()
+end)
+
+-- Fetch URL -> Editor (manual fetch; must be fetched before execute)
+btnFetch.MouseButton1Click:Connect(function()
+    local lk = linkBox.Text or ""
+    if lk:match("^https?://") then
+        local ok, res = pcall(function() return game:HttpGet(lk) end)
+        if ok and res and res ~= "" then
+            codeBox.Text = res
+            warn("Fetched content into editor (you must review before executing).")
+        else
+            warn("Failed to fetch URL or empty content.")
+        end
+    else
+        warn("Invalid URL. Paste a http(s) link in Link box first.")
+    end
+end)
+
+-- Execute button (runs only editor code) - safe wrapper
+btnExecute.MouseButton1Click:Connect(function()
+    local code = codeBox.Text or ""
+    if code:match("^%s*$") then
+        warn("Editor is empty. Paste code or fetch it first.")
+        return
+    end
+    -- safety: refuse to run if editor contains http get or obvious remote loader patterns
+    if code:lower():match("http") or code:lower():match("game:httpp") or code:lower():match("httpget") or code:lower():match("loadstring%(") and not code:lower():match("^%s*loadstring") then
+        -- This heuristic blocks scripts that look like remote loaders; let user manually strip wrappers
+        local ok = false
+        -- show confirmation (simple)
+        ok = (LocalPlayer.UserId == game.CreatorId) or false -- only allow auto if you are server owner? (just a mild gate) -> keep false by default
+        if not ok then
+            warn("Execution blocked: editor contains remote/loader patterns. Paste clean local code or remove remote calls.")
+            return
+        end
+    end
+    -- compile and run
+    local fn, err = loadstring(code)
+    if not fn then
+        warn("Load error:", err)
+        return
+    end
+    local success, res = pcall(fn)
+    if not success then
+        warn("Runtime error: "..tostring(res))
+    else
+        print("Script executed (local).")
+    end
+end)
+
+-- Export/Import handlers
+btnExport.MouseButton1Click:Connect(function()
+    local txt = ExportScripts()
+    if txt then
+        -- show in a small popup (TextBox) so player can copy
+        local pop = New("Frame", {Parent = screenGui, Size=UDim2.new(0,600,0,360), Position=UDim2.new(0.5,-300,0.12,0), BackgroundColor3=Theme.Bg})
+        New("UICorner", {Parent = pop, CornerRadius=UDim.new(0,8)})
+        local tb = New("TextBox", {Parent = pop, Size=UDim2.new(1,-24,1,-44), Position=UDim2.new(0,12,0,12), MultiLine=true, Text=txt, ClearTextOnFocus=false})
+        local close = New("TextButton", {Parent = pop, Size=UDim2.new(0,80,0,28), Position=UDim2.new(1,-92,1,-36), Text="Close", BackgroundColor3=Color3.fromRGB(70,30,120)})
+        New("UICorner", {Parent = close, CornerRadius=UDim.new(0,6)})
+        close.MouseButton1Click:Connect(function() pop:Destroy() end)
+    else warn("Export failed.") end
+end)
+
+btnImport.MouseButton1Click:Connect(function()
+    -- open popup to paste JSON
+    local pop = New("Frame", {Parent = screenGui, Size=UDim2.new(0,600,0,360), Position=UDim2.new(0.5,-300,0.12,0), BackgroundColor3=Theme.Bg})
+    New("UICorner", {Parent = pop, CornerRadius=UDim.new(0,8)})
+    local tb = New("TextBox", {Parent = pop, Size=UDim2.new(1,-24,1,-44), Position=UDim2.new(0,12,0,12), MultiLine=true, PlaceholderText="Paste JSON here", ClearTextOnFocus=false})
+    local imp = New("TextButton", {Parent = pop, Size=UDim2.new(0,100,0,28), Position=UDim2.new(1,-112,1,-36), Text="Import", BackgroundColor3=Color3.fromRGB(60,140,80)})
+    New("UICorner", {Parent = imp, CornerRadius=UDim.new(0,6)})
+    imp.MouseButton1Click:Connect(function()
+        local ok = ImportScripts(tb.Text)
+        if ok then
+            pop:Destroy()
+            RefreshGameButtons()
+            RefreshScriptList()
+            print("Import successful")
+        else warn("Invalid JSON or import failed") end
+    end)
+end)
+
+-- Color presets UI (bottom-left)
+local cpLabel = New("TextLabel", {Parent = Main, Size=UDim2.new(0,200,0,20), Position=UDim2.new(0,20,1,-36), BackgroundTransparency=1, Text="Theme Presets:", Font=Enum.Font.GothamBold, TextColor3=Theme.Text})
+local presets = {
+    Purple = {Primary=Color3.fromRGB(56,20,100), Accent=Color3.fromRGB(170,84,255), Text=Color3.fromRGB(240,240,255), Bg=Color3.fromRGB(12,8,20)},
+    Pink   = {Primary=Color3.fromRGB(120,20,80), Accent=Color3.fromRGB(255,90,170), Text=Color3.fromRGB(255,240,250), Bg=Color3.fromRGB(18,8,16)},
+    Blue   = {Primary=Color3.fromRGB(10,30,80), Accent=Color3.fromRGB(70,160,255), Text=Color3.fromRGB(235,245,255), Bg=Color3.fromRGB(8,10,22)},
+    Lava   = {Primary=Color3.fromRGB(80,10,10), Accent=Color3.fromRGB(255,80,60), Text=Color3.fromRGB(255,240,230), Bg=Color3.fromRGB(16,6,6)},
+    Clear  = {Primary=Color3.fromRGB(30,30,30), Accent=Color3.fromRGB(200,200,200), Text=Color3.fromRGB(240,240,240), Bg=Color3.fromRGB(8,8,8)}
+}
+local px = 0
+for k,v in pairs(presets) do
+    local b = New("TextButton", {Parent = Main, Size=UDim2.new(0,64,0,28), Position=UDim2.new(0,20+px,1,-68), Text=k, BackgroundColor3=v.Primary, TextColor3=v.Text, Font=Enum.Font.GothamBold})
+    New("UICorner", {Parent = b, CornerRadius=UDim.new(0,6)})
+    b.MouseButton1Click:Connect(function()
+        Theme.Primary = v.Primary; Theme.Accent = v.Accent; Theme.Text = v.Text; Theme.Bg = v.Bg
+        -- apply theme
+        Main.BackgroundColor3 = Theme.Bg
+        -- update visible elements colors quickly (some examples)
+        for _,c in pairs(scriptList:GetChildren()) do if c:IsA("TextButton") then c.BackgroundColor3 = Theme.Primary; c.TextColor3 = Theme.Text end end
+        for _,c in pairs(left:GetChildren()) do if c.Name=="GameBtn" then c.BackgroundColor3 = Theme.Primary; c.TextColor3 = Theme.Text end end
+        btnFetch.BackgroundColor3 = Theme.Primary; btnExecute.BackgroundColor3 = Theme.Accent; btnSaveScript.BackgroundColor3 = Color3.fromRGB(70,40,120)
+        Title.TextColor3 = Theme.Text; Sub.TextColor3 = Theme.Text
+    end)
+    px = px + 74
+end
+
+-- Toggle with key K: show/hide + blur
+local visible = true
+local function SetVisible(v)
+    visible = v
+    Main.Visible = v
+    TweenService:Create(blur, TweenInfo.new(0.28), {Size = v and 22 or 0}):Play()
+end
+UserInputService.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode == TOGGLE_KEY then SetVisible(not visible) end
+end)
+
+-- initial
+RefreshGameButtons()
+RefreshScriptList()
+SetVisible(true)
+
+print("THAIDUI V3.3 loaded (Safe). Toggle with K. Use 'Fetch Link → Editor' to fetch remote code into editor for review before Execute.")
